@@ -14,8 +14,10 @@ public class UserService {
 
     public boolean saveEntry(User u){
         if(u.getPassword().length()==0 || u.getUserName().length()==0)return false;
-        if(ur.findByUserName(u.getUserName())==null)return false;
-        ur.save(u);
+        if(ur.findByUserName(u.getUserName())!=null)return false;
+//        ur.save(u);
+        ur.save(new User(u.getUserName(), "{noop}" + u.getPassword()));
+
         return true;
 
     }

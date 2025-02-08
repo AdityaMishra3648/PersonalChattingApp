@@ -18,12 +18,15 @@ public class User {
 
     public User() {
     }
-    public User(ObjectId id, @NonNull String userName, @NonNull String password) {
+    public User(@NonNull String userName, @NonNull String password) {
+        this.userName = userName;
+        this.password = password;
+    }
+    public User(ObjectId id,@NonNull String userName, @NonNull String password) {
         this.id = id;
         this.userName = userName;
         this.password = password;
     }
-
     @NonNull
     public String getUserName() {
         return userName;
