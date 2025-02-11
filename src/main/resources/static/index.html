@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .chat-container { display: flex; }
+        .users { width: 200px; border-right: 1px solid #ccc; padding: 10px; }
+        .chat-box { flex: 1; padding: 10px; }
+        #messages { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 10px; }
+        input, button { margin-top: 10px; padding: 5px; }
+        .login-container { text-align: center; margin-top: 50px; }
+    </style>
+</head>
+<body>
+
+    <br>
+    <br>
+    <br>
+    <h2>Test Basic Auth with /test/hii Endpoint</h2>
+    
+    <!-- Form to input username and password -->
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="sendRequest()">Send Request</button>
+    <br>
+    <br>
+    <br>
+    <!-- Login Section -->
+    <div id="login-section" class="login-container">
+        <h2>Login</h2>
+        <input type="text" id="name" placeholder="Enter Username"><br>
+        <input type="password" id="pass" placeholder="Enter Password"><br>
+        <button onclick="login()">Login</button>
+    </div>
+
+    <!-- Chat Section (Hidden initially) -->
+    <div id="chat-section" style="display: none;">
+        <h2>Chat App</h2>
+        <div class="chat-container">
+            <div class="users">
+                <h3>Users Online</h3>
+                <ul id="userList"></ul>
+            </div>
+            <div class="chat-box">
+                <h3>Messages</h3>
+                <div id="messages"></div>
+                <input type="text" id="recipient" placeholder="Recipient (for private)">
+                <input type="text" id="content" placeholder="Type a message">
+                <button onclick="sendGroupMessage()">Send to Group</button>
+                <button onclick="sendPrivateMessage()">Send Private</button>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function sendRequest() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            // Encode the username and password to Base64
+            const authHeader = 'Basic ' + btoa(username + ":" + password);
+
+            // Send a GET request with Basic Auth to /test/hii
+            fetch('http://localhost:9000/test/hii', {
+                method: 'GET',
+                headers: {
+                'Authorization': authHeader,  // Basic Auth header
+                'Accept': 'text/plain'  // Expecting plain text response
+            }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.text(); // Handle response as plain text
+                }
+                throw new Error('Network response was not ok');
+            })
+            .then(data => {
+                // Display the response in a popup
+                alert('Response: ' + data);
+            })
+            .catch(error => {
+                // Display error if the request fails
+                alert('Error: ' + error);
+            });
+        }
+        let stompClient = null;
+        let loggedInUser = null; // Store logged-in user's username
+
+        function login() {
+            const username = document.getElementById("name").value;
+            const password = document.getElementById("pass").value;
+            loggedInUser = document.getElementById("name").value;
+            // Simulate authentication (replace with real backend API call)
+            if (username && password) {
+                loggedInUser = username;
+
+                // Store credentials in localStorage
+                localStorage.setItem("username", username);
+                localStorage.setItem("password", password);
+
+                document.getElementById("login-section").style.display = "none";
+                document.getElementById("chat-section").style.display = "block";
+                connect();
+            } else {
+                alert("Please enter valid username and password.");
+            }
+        }
+
+        function logout() {
+            loggedInUser = null;
+            document.getElementById("chat-section").style.display = "none";
+            document.getElementById("login-section").style.display = "block";
+            stompClient.disconnect();
+        }
+
+        function connect() {
+            // Get username and password from localStorage for Basic Auth
+            const username = localStorage.getItem("username");
+            const password = localStorage.getItem("password");
+            // const socket = new SockJS(`http://${username}:${password}@localhost:9000/chat`);
+            const socket = new SockJS('http://localhost:9000/chat');
+            stompClient = Stomp.over(socket);
+
+            loggedInUser = localStorage.getItem("username");
+            console.log("local storage has username  = "+username+" and pass = "+password);
+            // const username = "test";
+            // const password = "test";
+
+            // Encode to Base64 and prepare Basic Auth header
+            const authHeader = "Basic " + btoa(username + ":" + password);
+
+            stompClient.connect(
+                { "Authorization": authHeader },
+                function (frame) {
+                    console.log('Connected as:', loggedInUser);
+
+                    // Subscribe to group chat
+                    stompClient.subscribe('/topic/messages', function (messageOutput) {
+                        showMessage(JSON.parse(messageOutput.body));
+                    });
+
+                    // Subscribe to private messages
+                    stompClient.subscribe('/user/'+username+'/queue/private', function (messageOutput) {
+                        console.log("username one path user path worked")
+                        showMessage(JSON.parse(messageOutput.body), true);
+                    });
+                    stompClient.subscribe('/user/queue/private', function (messageOutput) {
+                        console.log("2nd user path worked")
+                        showMessage(JSON.parse(messageOutput.body), true);
+                    });
+
+                    // Notify server that the user is online (Optional)
+                    stompClient.send("/app/user-joined", {}, JSON.stringify({ username: loggedInUser }));
+                }
+            );
+        }
+
+        function sendGroupMessage() {
+            const content = document.getElementById('content').value;
+            stompClient.send("/app/sendMessage", {}, JSON.stringify({ name: loggedInUser, content: content }));
+        }
+
+        function sendPrivateMessage() {
+            const recipient = document.getElementById('recipient').value;
+            const content = document.getElementById('content').value;
+            console.log("sending private message sender = "+loggedInUser+" recipient = "+recipient);
+            stompClient.send("/app/private-message", {}, JSON.stringify({ sender: loggedInUser, recipient: recipient, content: content }));
+        }
+
+        function showMessage(message, isPrivate = false) {
+            const messagesDiv = document.getElementById('messages');
+            const messageElement = document.createElement('div');
+            if(isPrivate){
+                messageElement.textContent = (isPrivate ? "[Private] " : "") + message.sender + ": " + message.content;
+            }else{
+                messageElement.textContent = (isPrivate ? "[Private] " : "") + message.name + ": " + message.content;
+            }
+            messagesDiv.appendChild(messageElement);
+        }
+    </script>
+
+</body>
+</html>
+
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .chat-container { display: flex; }
+        .users { width: 200px; border-right: 1px solid #ccc; padding: 10px; }
+        .chat-box { flex: 1; padding: 10px; }
+        #messages { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 10px; }
+        input, button { margin-top: 10px; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h2>Chat App</h2>
+    <div class="chat-container">
+        <div class="users">
+            <h3>Users Online</h3>
+            <ul id="userList"></ul>
+        </div>
+        <div class="chat-box">
+            <h3>Messages</h3>
+            <div id="messages"></div>
+            <input type="text" id="name" placeholder="Enter your name">
+            <input type="text" id="recipient" placeholder="Recipient (for private)">
+            <input type="text" id="content" placeholder="Type a message">
+            <button onclick="sendGroupMessage()">Send to Group</button>
+            <button onclick="sendPrivateMessage()">Send Private</button>
+        </div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let username = prompt("Enter your name:"); // Get the username on page load
+
+        function connect() {
+            const socket = new SockJS('http://localhost:9000/chat');
+            stompClient = Stomp.over(socket);
+            
+            stompClient.connect({}, function (frame) {
+                console.log('Connected as:', username);
+
+                // Subscribe to group chat
+                stompClient.subscribe('/topic/messages', function (messageOutput) {
+                    showMessage(JSON.parse(messageOutput.body));
+                });
+
+                // Subscribe to private messages
+                stompClient.subscribe('/user/queue/private', function (messageOutput) {
+                    showMessage(JSON.parse(messageOutput.body), true);
+                });
+
+                // Send username to server (optional)
+                stompClient.send("/app/user-joined", {}, JSON.stringify({ name: username }));
+            });
+        }
+
+        function sendGroupMessage() {
+            const content = document.getElementById('content').value;
+            stompClient.send("/app/sendMessage", {}, JSON.stringify({ name: username, content: content }));
+        }
+
+        function sendPrivateMessage() {
+            const recipient = document.getElementById('recipient').value;
+            const content = document.getElementById('content').value;
+            stompClient.send("/app/private-message", {}, JSON.stringify({ sender: username, recipient: recipient, content: content }));
+        }
+
+        function showMessage(message, isPrivate = false) {
+            const messagesDiv = document.getElementById('messages');
+            const messageElement = document.createElement('div');
+            messageElement.textContent = (isPrivate ? "[Private] " : "") + message.name + ": " + message.content;
+            messagesDiv.appendChild(messageElement);
+        }
+
+        connect();
+    </script>
+</body>
+</html> -->
