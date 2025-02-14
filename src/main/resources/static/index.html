@@ -16,20 +16,8 @@
         .login-container { text-align: center; margin-top: 50px; }
     </style>
 </head>
-<body>
+<body onload="checkLoginStatus()">
 
-    <br>
-    <br>
-    <br>
-    <h2>Test Basic Auth with /test/hii Endpoint</h2>
-    
-    <!-- Form to input username and password -->
-    <input type="text" id="username" placeholder="Username" />
-    <input type="password" id="password" placeholder="Password" />
-    <button onclick="sendRequest()">Send Request</button>
-    <br>
-    <br>
-    <br>
     <!-- Login Section -->
     <div id="login-section" class="login-container">
         <h2>Login</h2>
@@ -40,6 +28,10 @@
 
     <!-- Chat Section (Hidden initially) -->
     <div id="chat-section" style="display: none;">
+        <br>
+        <div><button onclick="sendRequest()">Greet</button></div>
+        <br>
+        <br>
         <h2>Chat App</h2>
         <div class="chat-container">
             <div class="users">
@@ -59,20 +51,24 @@
     </div>
 
     <script>
+        let stompClient = null;
+        let loggedInUser = null;
+        
         function sendRequest() {
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            
-            // Encode the username and password to Base64
-            const authHeader = 'Basic ' + btoa(username + ":" + password);
+            const mytoken = getCookie("jwtToken");
 
+            if (!mytoken) {
+                alert("Authentication failed. Please log in again.");
+                logout();
+                return;
+            }
             // Send a GET request with Basic Auth to /test/hii
             fetch('http://localhost:9000/test/hii', {
                 method: 'GET',
                 headers: {
-                'Authorization': authHeader,  // Basic Auth header
+                "Authorization": "Bearer " + mytoken,  // sending token in header header
                 'Accept': 'text/plain'  // Expecting plain text response
-            }
+                }
             })
             .then(response => {
                 if (response.ok) {
@@ -89,104 +85,177 @@
                 alert('Error: ' + error);
             });
         }
-        let stompClient = null;
-        let loggedInUser = null; // Store logged-in user's username
+
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                let date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + value + "; path=/" + expires;
+        }
+
+        function getCookie(name) {
+            let nameEQ = name + "=";
+            let cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                let cookie = cookies[i].trim();
+                if (cookie.indexOf(nameEQ) === 0) {
+                    return cookie.substring(nameEQ.length, cookie.length);
+                }
+            }
+            return null;
+        }
+
+        function eraseCookie(name) {
+            document.cookie = name + "=; Max-Age=-99999999;";
+        }
+
+        function checkLoginStatus() {
+            const token = getCookie("jwtToken");
+            if (token) {
+                document.getElementById("login-section").style.display = "none";
+                document.getElementById("chat-section").style.display = "block";
+                connect();
+            }
+        }
 
         function login() {
             const username = document.getElementById("name").value;
             const password = document.getElementById("pass").value;
-            loggedInUser = document.getElementById("name").value;
-            // Simulate authentication (replace with real backend API call)
-            if (username && password) {
-                loggedInUser = username;
 
-                // Store credentials in localStorage
-                localStorage.setItem("username", username);
-                localStorage.setItem("password", password);
-
-                document.getElementById("login-section").style.display = "none";
-                document.getElementById("chat-section").style.display = "block";
-                connect();
-            } else {
-                alert("Please enter valid username and password.");
-            }
+            fetch("http://localhost:9000/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userName: username, password: password })
+            })
+            .then(response => response.text())
+            .then(data => {
+                if (data) {
+                    setCookie("jwtToken", data, 1);
+                    loggedInUser = username;
+                    document.getElementById("login-section").style.display = "none";
+                    document.getElementById("chat-section").style.display = "block";
+                    console.log(getCookie("jwtToken"));
+                    connect();
+                } else {
+                    alert("Invalid credentials. Try again.");
+                }
+            })
+            .catch(error => alert("Login failed: " + error));
         }
 
         function logout() {
+            eraseCookie("jwtToken");
             loggedInUser = null;
             document.getElementById("chat-section").style.display = "none";
             document.getElementById("login-section").style.display = "block";
-            stompClient.disconnect();
+            if (stompClient) stompClient.disconnect();
         }
 
         function connect() {
-            // Get username and password from localStorage for Basic Auth
-            const username = localStorage.getItem("username");
-            const password = localStorage.getItem("password");
-            // const socket = new SockJS(`http://${username}:${password}@localhost:9000/chat`);
-            const socket = new SockJS('http://localhost:9000/chat');
+            const token = getCookie("jwtToken");
+            console.log("connect function called token = "+token);
+            if (!token) {
+                alert("Authentication failed. Please log in again.");
+                logout();
+                return;
+            }
+
+            const socket = new SockJS("http://localhost:9000/chat");
+            // const socket = new SockJS("http://localhost:9000/chat?token=" + token);
+// stompClient = Stomp.over(socket);
+
             stompClient = Stomp.over(socket);
 
-            loggedInUser = localStorage.getItem("username");
-            console.log("local storage has username  = "+username+" and pass = "+password);
-            // const username = "test";
-            // const password = "test";
+            stompClient.connect({ "Authorization": "Bearer " + token }, function (frame) {
+                console.log("Connected as:", loggedInUser);
 
-            // Encode to Base64 and prepare Basic Auth header
-            const authHeader = "Basic " + btoa(username + ":" + password);
+                stompClient.subscribe("/topic/messages", function (messageOutput) {
+                    showMessage(JSON.parse(messageOutput.body));
+                });
 
-            stompClient.connect(
-                { "Authorization": authHeader },
-                function (frame) {
-                    console.log('Connected as:', loggedInUser);
+                stompClient.subscribe("/user/queue/private", function (messageOutput) {
+                    showMessage(JSON.parse(messageOutput.body), true);
+                });
+                stompClient.subscribe("/user/"+loggedInUser+"/queue/private", function (messageOutput) {
+                    showMessage(JSON.parse(messageOutput.body), true);
+                });
 
-                    // Subscribe to group chat
-                    stompClient.subscribe('/topic/messages', function (messageOutput) {
-                        showMessage(JSON.parse(messageOutput.body));
-                    });
-
-                    // Subscribe to private messages
-                    stompClient.subscribe('/user/'+username+'/queue/private', function (messageOutput) {
-                        console.log("username one path user path worked")
-                        showMessage(JSON.parse(messageOutput.body), true);
-                    });
-                    stompClient.subscribe('/user/queue/private', function (messageOutput) {
-                        console.log("2nd user path worked")
-                        showMessage(JSON.parse(messageOutput.body), true);
-                    });
-
-                    // Notify server that the user is online (Optional)
-                    stompClient.send("/app/user-joined", {}, JSON.stringify({ username: loggedInUser }));
-                }
-            );
+                stompClient.send("/app/user-joined", {}, JSON.stringify({ username: loggedInUser }));
+            });
         }
 
+        // function sendGroupMessage() {
+        //     const content = document.getElementById("content").value;
+        //     const token = getCookie("jwtToken");
+        //     console.log("inside sendGroupmessage token = "+token);
+        //     fetch("http://localhost:9000/app/sendMessage", {
+        //         method: "POST",
+        //         headers: {
+        //             "Authorization": "Bearer " + token,
+        //             "Content-Type": "application/json"
+        //         },
+        //         body: JSON.stringify({ name: loggedInUser, content: content })
+        //     });
+        // }
+        
         function sendGroupMessage() {
             const content = document.getElementById('content').value;
-            stompClient.send("/app/sendMessage", {}, JSON.stringify({ name: loggedInUser, content: content }));
+            const token = getCookie("jwtToken");
+            stompClient.send("/app/sendMessage", {"Authorization": "Bearer " + token}, JSON.stringify({ name: loggedInUser, content: content }));
         }
 
+        // function sendPrivateMessage() {
+        //     const recipient = document.getElementById("recipient").value;
+        //     const content = document.getElementById("content").value;
+        //     const token = getCookie("jwtToken");
+            
+        //     fetch("http://localhost:9000/private-message", {
+        //         method: "POST",
+        //         headers: {
+        //             "Authorization": "Bearer " + token,
+        //             "Content-Type": "application/json"
+        //         },
+        //         body: JSON.stringify({ sender: loggedInUser, recipient: recipient, content: content })
+        //     });
+        // }
         function sendPrivateMessage() {
             const recipient = document.getElementById('recipient').value;
             const content = document.getElementById('content').value;
+            const token = getCookie("jwtToken");
             console.log("sending private message sender = "+loggedInUser+" recipient = "+recipient);
-            stompClient.send("/app/private-message", {}, JSON.stringify({ sender: loggedInUser, recipient: recipient, content: content }));
+            stompClient.send("/app/private-message", {"Authorization": "Bearer " + token}, JSON.stringify({ sender: loggedInUser, recipient: recipient, content: content }));
         }
 
         function showMessage(message, isPrivate = false) {
-            const messagesDiv = document.getElementById('messages');
-            const messageElement = document.createElement('div');
-            if(isPrivate){
-                messageElement.textContent = (isPrivate ? "[Private] " : "") + message.sender + ": " + message.content;
-            }else{
-                messageElement.textContent = (isPrivate ? "[Private] " : "") + message.name + ": " + message.content;
-            }
+            const messagesDiv = document.getElementById("messages");
+            const messageElement = document.createElement("div");
+            messageElement.textContent = (isPrivate ? "[Private] " : "") + (message.sender || message.name) + ": " + message.content;
             messagesDiv.appendChild(messageElement);
         }
     </script>
 
 </body>
 </html>
+
+
+<!--  -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
