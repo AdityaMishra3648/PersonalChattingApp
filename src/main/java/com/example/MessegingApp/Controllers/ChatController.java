@@ -21,6 +21,8 @@ public class ChatController {
 
     @MessageMapping("/sendMessage") // Handles messages sent to /app/sendMessage
     @SendTo("/topic/messages") // Broadcast messages to /topic/messages
+//    @SendTo("/user/test/queue/private") // Broadcast messages to /topic/messages
+
     public ChatMessage sendMessage(ChatMessage message) {
         return message; // Simply return the message to be broadcast
     }
@@ -28,7 +30,7 @@ public class ChatController {
     public ChatController(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
     }
-    @SendToUser
+//    @SendToUser
     @MessageMapping("/private-message") // Handles messages sent to /app/private-message
     public void sendPrivateMessage(@Payload PrivateChatMessage message) {
         // Send message to the recipient's private queue

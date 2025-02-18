@@ -30,7 +30,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        config.enableSimpleBroker("/topic", "/queue"); // Support both public and private messaging
+        config.enableSimpleBroker("/topic", "/queue","/user"); // Support both public and private messaging
         config.setApplicationDestinationPrefixes("/app");
         config.setUserDestinationPrefix("/user"); // Prefix for private messages
     }
@@ -159,8 +159,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 class JwtHandshakeInterceptor implements HandshakeInterceptor {
 
     @Override
-    public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
-                                   WebSocketHandler wsHandler, Map<String, Object> attributes) {
+    public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler, Map<String, Object> attributes) {
         if (request instanceof ServletServerHttpRequest servletRequest) {
             String token = servletRequest.getServletRequest().getParameter("token"); // Extract token from URL
             if (token != null && !token.isEmpty()) {

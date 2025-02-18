@@ -29,24 +29,24 @@ public class securityConfig {
     @Autowired
     private JWTAuthenticationEntry point;
 
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception{
-        http.csrf(csrf->csrf.disable())
-    .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .authorizeHttpRequests(authorizeRequests->
-               authorizeRequests.requestMatchers("/signUp/**","/signUp","/auth/login","/chat/**","/user/**")
-                       .permitAll().anyRequest().authenticated())
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(point))
-                .sessionManagement(session->session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .httpBasic(Customizer.withDefaults());
-        http.addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class);
-        return http.build();
-    }
+     @Bean
+     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception{
+         http.csrf(csrf->csrf.disable())
+     .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                 .authorizeHttpRequests(authorizeRequests->
+                authorizeRequests.requestMatchers("/signUp/**","/signUp","/auth/login","/chat/**","/user/**")
+                        .permitAll().anyRequest().authenticated())
+                 .exceptionHandling(ex -> ex.authenticationEntryPoint(point))
+                 .sessionManagement(session->session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                 .httpBasic(Customizer.withDefaults());
+         http.addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class);
+         return http.build();
+     }
 
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration builder) throws Exception {
-        return builder.getAuthenticationManager();
-    }
+     @Bean
+     public AuthenticationManager authenticationManager(AuthenticationConfiguration builder) throws Exception {
+         return builder.getAuthenticationManager();
+     }
 
 
     @Bean
